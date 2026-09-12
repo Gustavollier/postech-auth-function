@@ -1,0 +1,105 @@
+name: CI/CD - Auth Function
+
+# Autenticação no Azure via OIDC (federated credentials) — nenhum segredo de cliente guardado.
+# Secrets necessários (GitHub Environments "homolog" e "production"):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_FUNCTIONAPP_NAME
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+env:
+  DOTNET_VERSION: "8.0.x"
+  PROJECT_PATH: src/PosTech.AuthFunction/PosTech.AuthFunction.csproj
+  TEST_PATH: tests/PosTech.AuthFunction.Tests/PosTech.AuthFunction.Tests.csproj
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build -c Release --no-restore
+
+      - name: Test
+        run: dotnet test ${{ env.TEST_PATH }} -c Release --no-build --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
+
+      - name: Publish test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: "**/TestResults/**"
+          if-no-files-found: ignore
+
+      - name: Publish Function package
+        if: github.event_name != 'pull_request'
+        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release --no-build -o ./output
+
+      - name: Upload Function artifact
+        if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: function-package
+          path: ./output
+
+  deploy:
+    name: Deploy (${{ github.ref_name == 'main' && 'production' || 'homolog' }})
+    needs: build-test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref_name == 'main' && 'production' || 'homolog' }}
+    permissions:
+      id-token: write
+      contents: read
+    steps:
+      - name: Download Function artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: function-package
+          path: ./output
+
+      - name: Azure login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Deploy to Azure Functions
+        uses: Azure/functions-action@v1
+        with:
+          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
+          package: ./output
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          URL="https://${{ secrets.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health"
+          for tentativa in {1..10}; do
+            codigo=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || true)
+            echo "Tentativa $tentativa: HTTP $codigo"
+            if [ "$codigo" = "200" ]; then
+              echo "Health check OK"
+              exit 0
+            fi
+            sleep 15
+          done
+          echo "Health check falhou apos 10 tentativas"
+          exit 1

@@ -1,0 +1,14 @@
+{
+  "IsEncrypted": false,
+  "Values": {
+    "AzureWebJobsStorage": "UseDevelopmentStorage=true",
+    "FUNCTIONS_WORKER_RUNTIME": "dotnet-isolated",
+
+    "SqlConnectionString": "Server=localhost,1433;Database=PosTechChallenge;User Id=sa;Password=MinhaS3nha123;TrustServerCertificate=True;",
+
+    "Jwt__SecretKey": "MinhaSenhaProtegida123MinhaSenhaProtegida123",
+    "Jwt__Issuer": "PosTechChallenge",
+    "Jwt__Audience": "PosTechChallenge-API",
+    "Jwt__ExpMinutes": "15"
+  }
+}

@@ -1,0 +1,28 @@
+## .NET
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+TestResults/
+coverage*.xml
+coverage*.json
+*.trx
+
+## Azure Functions
+local.settings.json
+.python_packages/
+__azurite*
+__blobstorage__
+__queuestorage__
+output/
+
+## IDE
+.vs/
+.vscode/
+.idea/
+
+## OS
+Thumbs.db
+.DS_Store
