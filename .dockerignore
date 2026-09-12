@@ -1,0 +1,12 @@
+**/bin/
+**/obj/
+**/out/
+**/output/
+**/.git/
+**/.github/
+**/.vs/
+**/.vscode/
+**/TestResults/
+**/local.settings.json
+tests/
+README.md

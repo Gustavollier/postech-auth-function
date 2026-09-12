@@ -1,8 +1,10 @@
 name: CI/CD - Auth Function
 
-# Autenticação no Azure via OIDC (federated credentials) — nenhum segredo de cliente guardado.
-# Secrets necessários (GitHub Environments "homolog" e "production"):
-#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID, AZURE_FUNCTIONAPP_NAME
+# Build e deploy rodam nos runners do GitHub. A autenticação no Azure usa OIDC
+# (federated credentials) — nenhuma senha ou certificado fica guardado.
+#
+# Secrets (já configurados no repositório):
+#   AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
 
 on:
   push:
@@ -13,7 +15,10 @@ on:
 
 env:
   DOTNET_VERSION: "8.0.x"
-  PROJECT_PATH: src/PosTech.AuthFunction/PosTech.AuthFunction.csproj
+  ACR_NAME: postechacr13soat
+  IMAGE_NAME: postech-auth-function
+  RESOURCE_GROUP: pos-tech-fiap
+  CONTAINER_APP: postech-auth-fn-13soat
   TEST_PATH: tests/PosTech.AuthFunction.Tests/PosTech.AuthFunction.Tests.csproj
 
 permissions:
@@ -37,10 +42,12 @@ jobs:
       - name: Build
         run: dotnet build -c Release --no-restore
 
-      - name: Test
-        run: dotnet test ${{ env.TEST_PATH }} -c Release --no-build --logger "trx;LogFileName=test-results.trx" --collect:"XPlat Code Coverage"
+      # Inclui o teste que valida o JWT emitido contra os TokenValidationParameters
+      # exatos da API principal. Se ele quebrar, a API rejeitaria o token.
+      - name: Testes
+        run: dotnet test ${{ env.TEST_PATH }} -c Release --no-build --logger "trx;LogFileName=test-results.trx"
 
-      - name: Publish test results
+      - name: Publicar resultado dos testes
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -48,19 +55,8 @@ jobs:
           path: "**/TestResults/**"
           if-no-files-found: ignore
 
-      - name: Publish Function package
-        if: github.event_name != 'pull_request'
-        run: dotnet publish ${{ env.PROJECT_PATH }} -c Release --no-build -o ./output
-
-      - name: Upload Function artifact
-        if: github.event_name != 'pull_request'
-        uses: actions/upload-artifact@v4
-        with:
-          name: function-package
-          path: ./output
-
   deploy:
-    name: Deploy (${{ github.ref_name == 'main' && 'production' || 'homolog' }})
+    name: Imagem & Deploy
     needs: build-test
     if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
@@ -69,37 +65,70 @@ jobs:
       id-token: write
       contents: read
     steps:
-      - name: Download Function artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: function-package
-          path: ./output
+      - uses: actions/checkout@v4
 
-      - name: Azure login (OIDC)
+      - name: Login no Azure (OIDC)
         uses: azure/login@v2
         with:
           client-id: ${{ secrets.AZURE_CLIENT_ID }}
           tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Deploy to Azure Functions
-        uses: Azure/functions-action@v1
-        with:
-          app-name: ${{ secrets.AZURE_FUNCTIONAPP_NAME }}
-          package: ./output
+      - name: Login no ACR
+        run: az acr login --name ${{ env.ACR_NAME }}
+
+      - name: Build e push da imagem
+        run: |
+          set -euo pipefail
+          REGISTRY="${{ env.ACR_NAME }}.azurecr.io"
+          TAG="${{ github.sha }}"
+
+          docker build \
+            -t "$REGISTRY/${{ env.IMAGE_NAME }}:$TAG" \
+            -t "$REGISTRY/${{ env.IMAGE_NAME }}:latest" \
+            -f Dockerfile .
+
+          docker push "$REGISTRY/${{ env.IMAGE_NAME }}:$TAG"
+          docker push "$REGISTRY/${{ env.IMAGE_NAME }}:latest"
+
+          echo "IMAGE=$REGISTRY/${{ env.IMAGE_NAME }}:$TAG" >> "$GITHUB_ENV"
+
+      # Na primeira execução o Container App ainda não existe — quem o cria é o
+      # Terraform do repo postech-infra-k8s, que precisa da imagem já publicada.
+      # Daí em diante, cada deploy apenas troca a tag da imagem.
+      - name: Atualizar o Container App
+        run: |
+          set -euo pipefail
+          if az containerapp show --name "${{ env.CONTAINER_APP }}" \
+                                  --resource-group "${{ env.RESOURCE_GROUP }}" &>/dev/null; then
+            az containerapp update \
+              --name "${{ env.CONTAINER_APP }}" \
+              --resource-group "${{ env.RESOURCE_GROUP }}" \
+              --image "$IMAGE"
+            echo "Container App atualizado para $IMAGE"
+          else
+            echo "Container App ainda não existe."
+            echo "Imagem publicada. Rode a pipeline do repositorio postech-infra-k8s para cria-lo."
+          fi
 
       - name: Smoke test
         run: |
           set -euo pipefail
-          URL="https://${{ secrets.AZURE_FUNCTIONAPP_NAME }}.azurewebsites.net/api/health"
-          for tentativa in {1..10}; do
-            codigo=$(curl -s -o /dev/null -w "%{http_code}" "$URL" || true)
+          FQDN=$(az containerapp show --name "${{ env.CONTAINER_APP }}" \
+                   --resource-group "${{ env.RESOURCE_GROUP }}" \
+                   --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || echo "")
+
+          if [ -z "$FQDN" ]; then
+            echo "Container App ainda não provisionado — smoke test pulado."
+            exit 0
+          fi
+
+          for tentativa in $(seq 1 12); do
+            codigo=$(curl -s -o /dev/null -w "%{http_code}" "https://$FQDN/api/health" || true)
             echo "Tentativa $tentativa: HTTP $codigo"
-            if [ "$codigo" = "200" ]; then
-              echo "Health check OK"
-              exit 0
-            fi
-            sleep 15
+            [ "$codigo" = "200" ] && { echo "Health check OK"; exit 0; }
+            sleep 10
           done
-          echo "Health check falhou apos 10 tentativas"
+
+          echo "::error::Health check falhou"
           exit 1
