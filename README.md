@@ -163,12 +163,12 @@ Secrets do GitHub por environment: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
 
 | Repo | Conteúdo |
 |---|---|
-| [PosTechChallenge](https://github.com/GuinterZaffalon/PosTechChallenge) | Aplicação principal + documentação arquitetural |
-| [postech-infra-k8s](https://github.com/GuinterZaffalon/postech-infra-k8s) | Terraform: AKS, ACR, APIM, Datadog |
-| [postech-infra-db](https://github.com/GuinterZaffalon/postech-infra-db) | Terraform: Azure SQL Database |
+| [postech-app](https://github.com/Gustavollier/postech-app) | Aplicação principal (.NET) e manifestos do AKS |
+| [postech-infra-k8s](https://github.com/Gustavollier/postech-infra-k8s) | Terraform: AKS, ACR, APIM, Datadog |
+| [postech-infra-db](https://github.com/Gustavollier/postech-infra-db) | Terraform: Azure SQL Database e Key Vault |
 | **postech-auth-function** | este repositório |
 
 Documentação arquitetural completa (componentes, sequência, RFCs, ADRs, ER):
-[`PosTechChallenge/docs`](https://github.com/GuinterZaffalon/PosTechChallenge/tree/main/docs).
+[`postech-app/docs`](https://github.com/Gustavollier/postech-app/tree/main/docs).
 
 [Azure Functions Core Tools v4]: https://learn.microsoft.com/azure/azure-functions/functions-run-local
