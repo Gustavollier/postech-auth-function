@@ -169,6 +169,6 @@ Secrets do GitHub por environment: `AZURE_CLIENT_ID`, `AZURE_TENANT_ID`,
 | **postech-auth-function** | este repositório |
 
 Documentação arquitetural completa (componentes, sequência, RFCs, ADRs, ER):
-[`postech-app/docs`](https://github.com/Gustavollier/postech-app/tree/main/docs).
+[`postech-app/docs`](https://github.com/Gustavollier/postech-app/tree/main/Documents).
 
 [Azure Functions Core Tools v4]: https://learn.microsoft.com/azure/azure-functions/functions-run-local
