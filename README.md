@@ -1,6 +1,6 @@
 # PosTech Auth Function
 
-Function serverless de **autenticação de cliente por CPF** do Tech Challenge Fase 3 (13SOAT).
+Function serverless de **autenticação de cliente por CPF** do Tech Challenge Fase 3 (15SOAT).
 
 Valida o CPF informado, confirma que o cliente existe e está ativo na base, e devolve um **JWT**
 aceito pelas rotas protegidas da API principal — que fica atrás do Azure API Management.
